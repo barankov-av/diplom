@@ -1,0 +1,5 @@
+---
+- name: Install Kuberspray
+  hosts: k8s-node
+  roles:
+    - role: kuberspray

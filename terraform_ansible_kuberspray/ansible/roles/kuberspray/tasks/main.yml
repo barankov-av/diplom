@@ -1,0 +1,41 @@
+---
+- name: Copy id_ed25519
+  ansible.builtin.copy:
+    src: ~/.ssh/id_ed25519
+    dest: ~/.ssh/id_ed25519
+    mode: '0600'
+
+- name: Clone Kubespray
+  ansible.builtin.git:
+    repo: https://github.com/kubernetes-incubator/kubespray.git
+    dest: ~/kuberspray
+    force: yes
+
+- name: Создать папку
+  ansible.builtin.file:
+    path: ~/kuberspray/inventory/cluster
+    state: directory
+
+- name: Copy inventory
+  ansible.builtin.copy:
+    src: ~/diplom/terraform_work/k8s_inventory.ini
+    dest: ~/kuberspray/inventory/cluster/inventory.ini
+
+- name: Install python and ansible
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - python3-pip
+    - ansible
+  become: yes
+
+- name: Установка пакетов
+  ansible.builtin.pip:
+    requirements: ~/kuberspray/requirements.txt
+    extra_args: --user
+
+- name: Выполнить playbook
+  command: ansible-playbook cluster.yml -u ubuntu -b -v -i inventory/cluster/inventory.ini --private-key ~/.ssh/id_ed25519
+  args:
+    chdir: ~/kuberspray

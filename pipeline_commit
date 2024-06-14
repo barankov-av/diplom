@@ -1,0 +1,33 @@
+pipeline {
+    agent any
+    
+    environment {
+        YANDEX_REGISTRY = 'cr.yandex/crpsg85c77h25a1cb032/nginx-image'
+        YANDEX_REGISTRY_CREDS = credentials('yandex-registry')
+    }
+    
+    stages {
+        stage('Clone Source') {
+            steps {
+                git 'https://github.com/barankov-av/nginx.git'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    def dockerImageName = "${YANDEX_REGISTRY}:commit"
+                    sh "docker build -t ${dockerImageName} ."
+                }
+            }
+        }
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    def dockerImageName = "${YANDEX_REGISTRY}:commit"
+                    sh "cat ${YANDEX_REGISTRY_CREDS} | docker login -u json_key --password-stdin cr.yandex"
+                    sh "docker push ${dockerImageName}"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,67 @@
+pipeline {
+    agent any
+
+    environment {
+        YANDEX_REGISTRY = 'cr.yandex/crpsg85c77h25a1cb032/nginx-image'
+        YANDEX_REGISTRY_CREDS = credentials('yandex-registry')
+    }
+
+    triggers {
+        cron('*/15 * * * *')
+    }
+    
+    stages {
+        stage('Deploy') {
+            steps {
+                script {
+                    git 'https://github.com/barankov-av/nginx.git'
+                    def tagValuenew = sh(script: 'git tag --points-at HEAD | tail -n 1', returnStdout: true).trim()
+                    def fileContentCount = sh(script: "cat content.txt", returnStdout: true).trim()
+                    if (fileContentCount != "1") {
+                        sh "echo '${tagValuenew}' > tag.txt"
+                        sh "echo '1' > content.txt"
+                    } else {
+                        def tagValueold = sh(script: "cat tag.txt", returnStdout: true).trim()
+                        if (tagValueold != tagValuenew && !tagValuenew.isEmpty()) {
+                            def dockerImageName = "${YANDEX_REGISTRY}:${tagValuenew}"
+                            sh "docker build -t ${dockerImageName} ."
+                            sh "cat ${YANDEX_REGISTRY_CREDS} | docker login -u json_key --password-stdin cr.yandex"
+                            sh "docker push ${dockerImageName}"
+                            def deploymentYaml = '''
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: monitoring
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+        - name: nginx-image
+          image: cr.yandex/crpsg85c77h25a1cb032/nginx-image:v1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              protocol: TCP
+'''
+                            sh "echo '''${deploymentYaml}''' > deployment.yaml"
+                            withKubeCredentials(kubectlCredentials: [[caCertificate: '', clusterName: 'yc-master', contextName: '', credentialsId: 'kubernetes_token', namespace: 'default', serverUrl: 'https://158.160.151.85']]) {
+                            sh 'chmod u+x ./kubectl'
+                            sh './kubectl apply -f deployment.yaml'
+}
+                        } 
+                        sh "echo '${tagValuenew}' > tag.txt"
+                    }
+                    
+                }
+            }
+        }
+    }
+}
